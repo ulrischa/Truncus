@@ -1,0 +1,25 @@
+:host{display:block;font:15px/1.5 system-ui,sans-serif;color:#23372e}
+*{box-sizing:border-box}
+.workspace{display:grid;grid-template-columns:minmax(175px,1fr) minmax(240px,2.2fr) minmax(210px,1.15fr);gap:16px;align-items:start}
+.panel,.page{background:white;border:1px solid #ced7cd;border-radius:10px;min-width:0;overflow-wrap:anywhere}
+.panel{padding:16px}
+.panel h2,.page header{margin:0 0 14px;font:600 12px/1.4 system-ui,sans-serif;letter-spacing:.055em;text-transform:uppercase;color:#4c6555}
+h3{margin:0;font:600 22px Georgia,serif}h4{margin:16px 0 4px}
+button,select{font:inherit;color:inherit;background:white;border:1px solid #b4c1b4;border-radius:5px;padding:5px 8px;max-width:100%}
+button{cursor:pointer}button:hover:enabled{background:#eaf0e8}button:disabled{opacity:.45;cursor:default}
+:focus-visible{outline:3px solid #2168a1;outline-offset:2px}
+ul{list-style:none;padding:0;margin:0}li ul{padding-left:10px;border-left:1px solid #d3ded2}
+li>button{display:block;width:100%;text-align:left;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;border:0;margin:2px 0}
+button[aria-pressed=true]{background:#dbeadd;font-weight:650}
+.picker,.actions{display:flex;gap:5px;margin-top:12px;flex-wrap:wrap}.picker select{min-width:0;flex:1}.actions{border-top:1px solid #dae1da;padding-top:12px}
+.page header{border-bottom:1px solid #dae1da;padding:13px 20px;margin:0;display:flex;align-items:center;gap:8px}
+.dot{width:8px;height:8px;border-radius:100%;background:#398452}
+#preview{padding:clamp(18px,3.5vw,48px);min-height:350px;line-height:1.65}
+#preview :is(h1,h2,h3){font-family:Georgia,serif;line-height:1.15;letter-spacing:-.025em}
+#preview h1{font-size:clamp(30px,3.6vw,52px)}#preview>:first-child{margin-top:0}
+#preview ul{list-style:disc;padding-left:1.5em}#preview a{color:#27694d}
+#preview details{border-bottom:1px solid #cbd6cb;padding:10px 0}summary{cursor:pointer;font-weight:600}
+#preview article{border-left:3px solid #769e76;padding-left:18px;margin:1.4em 0}
+#feedback{color:#8b381e}
+@media(max-width:850px){.workspace{grid-template-columns:1fr 1fr}.page{grid-column:1/-1;grid-row:2}}
+@media(max-width:520px){.workspace{display:flex;flex-direction:column}.workspace>section{width:100%}.inspector{order:1}.page{order:2}}
