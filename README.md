@@ -6,18 +6,25 @@ For example, a link list owns one link repeater. The repeater owns ordinary link
 
 ## Try the editor
 
-Serve the repository from a static HTTP server. With Python installed, run this command from the repository root.
+**On Apache or IIS**, place `index.html`, `demo.js` and the complete `src/` directory together in a web-accessible directory, for example `/truncus/`. Open that directory's URL in your browser. The server must serve JavaScript modules with a JavaScript MIME type. Truncus runs entirely in the browser and requires no build step.
+
+**For a local preview with Node.js and npm**, run this command from the repository root. On first use, npm may prompt to download the `http-server` development tool.
 
 ```sh
-python -m http.server 8000
+npx http-server . -a 127.0.0.1 -p 8000
 ```
 
-Open [the demo](http://localhost:8000/). On Windows, the equivalent launcher command is `py -m http.server 8000`. For IIS or Apache, copy the project to a static directory and serve JavaScript modules with a JavaScript MIME type. There is no build step or package installation.
+Open [the local demo](http://127.0.0.1:8000/). To stop the server, press **Ctrl+C** in the terminal.
+
+### Editing and publishing a page
 
 1. Select a block in **Document outline**. Edit its fields in **Block settings** and watch **Live preview**.
 2. To add a top-level block, choose its type below the outline and select **Add**. To insert a nested block, use the picker inside its parent's settings.
 3. Try adding a **Link list**. Select **Edit Repeated links**, then **Add** to insert another link. Select **Move up**, **Move down**, **Duplicate**, or **Remove** on a link to manage the list. The controls respect the slot's minimum and maximum size.
 4. **Save JSON** downloads the editable source. **Open JSON** validates and restores it. **Export HTML** downloads a standalone page with native headings, paragraphs, links, lists, articles, and disclosures. The exported page works without editor JavaScript.
+
+5. To publish a standalone page, rename the downloaded HTML file (for example, `river-report.html`) and upload it to your website through your usual publishing process. The public page works independently of the editor. Keep the matching JSON file in your editorial files.
+6. To update the published page, reopen its JSON file with **Open JSON**, edit the blocks, save the revised JSON, then export the HTML again and replace the published HTML file at the same URL.
 
 The demo stores one draft per browser origin in local storage. Opening another document replaces that draft. Save a JSON copy if you want to keep both. The embeddable editor leaves storage to its host.
 
@@ -89,7 +96,7 @@ All registered field values are strings. Validation checks known block types, fi
 
 ## Extend and test
 
-Follow [Writing a block](docs/writing-a-block.md) for a complete custom block, a constrained repeater and an inspector extension. Open [the browser tests](http://localhost:8000/tests/) with the same local server to run the dependency-free regression suite.
+Follow [Writing a block](docs/writing-a-block.md) for a complete custom block, a constrained repeater and an inspector extension. Open [the browser tests](http://127.0.0.1:8000/tests/) with the same local server to run the dependency-free regression suite.
 
 ## How the code fits together
 
