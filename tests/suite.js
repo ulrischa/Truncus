@@ -1,4 +1,4 @@
-import {TruncusBlock, createBlock, register, renderDocument, serializeHTML, validateDocument} from '../src/truncus.js';
+import {TruncusBlock, createBlock, createDocument, registerPageType, register, renderDocument, serializeHTML, validateDocument} from '../src/truncus.js';
 
 const results = document.querySelector('#results');
 let failures = 0;
@@ -106,5 +106,57 @@ test('A rejected field edit preserves the draft, focus target and change count',
   assert(inspector === editor.shadowRoot.querySelector('truncus-block-link'));
   assert(changes === 1);
   editor.remove();
+});
+test('Guide constraints apply on import and rendering, including nested headings', () => {
+  const guide = createDocument('guide');
+  const teaser = createBlock('teaser');
+  guide.blocks.unshift(teaser);
+  const editor = document.createElement('truncus-editor');
+  editor.value = guide;
+  assert(editor.value.pageType === 'guide');
+  teaser.slots.title[0].attributes.level = '1';
+  rejects(() => { editor.value = guide; });
+  rejects(() => serializeHTML(guide));
+  assert(editor.value.blocks[0].slots.title[0].attributes.level === '2');
+  const list = createBlock('link-list');
+  for (const blocks of [[], [list, createBlock('heading')], [list, createBlock('link-list')]]) {
+    rejects(() => validateDocument({...guide, blocks}));
+  }
+  rejects(() => validateDocument({...guide, pageType: 'missing'}));
+  assert(serializeHTML(doc(teaser)).includes('<h1>'));
+});
+
+test('Guide editing reserves the final list and filters heading levels', () => {
+  const editor = document.createElement('truncus-editor');
+  editor.value = createDocument('guide');
+  const settings = editor.shadowRoot.querySelector('#settings');
+  const control = label => [...settings.querySelectorAll('button')].find(button => button.textContent === label);
+  assert(control('Remove').disabled && control('Duplicate').disabled);
+  const tree = editor.shadowRoot.querySelector('#tree');
+  const picker = tree.querySelector('select');
+  assert(![...picker.options].some(option => option.value === 'link-list'));
+  picker.value = 'heading';
+  tree.querySelector('.picker button').click();
+  assert(editor.value.blocks.map(block => block.type).join() === 'heading,link-list');
+  assert(control('Move down').disabled);
+  const inspector = settings.querySelector('truncus-block-heading');
+  const levels = inspector.shadowRoot.querySelector('select');
+  assert([...levels.options].map(option => option.value).join() === '2,3,4,5,6');
+  inspector.setAttributeValue('level', '1');
+  assert(editor.value.blocks[0].attributes.level === '2');
+  const reopened = JSON.parse(JSON.stringify(editor.value));
+  editor.value = reopened;
+  assert(serializeHTML(editor.value).startsWith('<h2>Heading</h2><ul>'));
+});
+
+test('Custom page types apply restricted defaults inside required children', () => {
+  registerPageType('test-feature', {
+    label: 'Feature',
+    requiredLast: 'teaser',
+    fieldOptions: {heading: {level: ['3', '4']}}
+  });
+  const feature = createDocument('test-feature');
+  assert(feature.blocks[0].slots.title[0].attributes.level === '3');
+  assert(createDocument('free').blocks.length === 0);
 });
 document.documentElement.dataset.result = failures ? 'failed' : 'passed';

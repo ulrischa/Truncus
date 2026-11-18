@@ -4,10 +4,10 @@ import {element} from './dom.js';
 export {element} from './dom.js';
 export {renderDocument, serializeHTML} from './renderer.js';
 
-function createFieldControl(field) {
-  if (field.options) {
+function createFieldControl(field, options) {
+  if (options) {
     const select = element('select');
-    for (const choice of field.options) select.append(element('option', choice));
+    for (const choice of options) select.append(element('option', choice));
     return select;
   }
   return element(field.kind === 'multiline' ? 'textarea' : 'input');
@@ -41,7 +41,8 @@ export class TruncusBlock extends HTMLElement {
     container.replaceChildren();
     for (const [key, field] of Object.entries(this.constructor.fields)) {
       const label = element('label', field.label);
-      const input = createFieldControl(field);
+      const choices = this.pageType?.choices(block.type, key) ?? field.options;
+      const input = createFieldControl(field, choices);
       input.value = block.attributes[key];
       input.addEventListener('input', () => this.setAttributeValue(key, input.value));
       label.append(input);

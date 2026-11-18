@@ -12,7 +12,7 @@ function button(label, action) {
 
 const template = document.createElement('template');
 template.innerHTML = `<link rel="stylesheet"><div class="workspace">
-  <section class="panel outline"><h2>Document outline</h2><div id="tree"></div></section>
+  <section class="panel outline"><h2 id="outline-heading">Document outline</h2><div id="tree"></div></section>
   <section class="page"><header><span class="dot"></span> Live preview</header><div id="preview"></div></section>
   <section class="panel inspector"><h2>Block settings</h2><div id="settings"></div></section>
   </div><p role="status" id="feedback"></p>`;
@@ -38,7 +38,7 @@ export class TruncusEditor extends HTMLElement {
     this.#draw();
   }
 
-  /** Read a detached snapshot; assign a version 1 document to load it. */
+  /** Read a detached snapshot; assign a saved document to load it. */
   get value() {
     return this.#model.snapshot();
   }
@@ -115,6 +115,7 @@ export class TruncusEditor extends HTMLElement {
     const select = element('select');
     select.setAttribute('aria-label', 'Block type for ' + slot.label);
     for (const type of allowedTypes(slot)) {
+      if (siblings === this.#model.document.blocks && type === this.#model.page.requiredLast) continue;
       const option = element('option', definition(type).label);
       option.value = type;
       select.append(option);
@@ -126,6 +127,8 @@ export class TruncusEditor extends HTMLElement {
   #outline() {
     this.#locations.clear();
     const rootSlot = {label: 'Document'};
+    this.#get('outline-heading').textContent = this.#model.document.pageType
+      ? this.#model.page.label + ' · Document outline' : 'Document outline';
     const roots = this.#model.document.blocks;
     this.#get('tree').replaceChildren(
       this.#outlineList(roots, rootSlot, null),
@@ -167,6 +170,7 @@ export class TruncusEditor extends HTMLElement {
     const heading = element('h3', type.label);
     heading.tabIndex = -1;
     const inspector = element('truncus-block-' + block.type);
+    inspector.pageType = this.#model.page;
     inspector.bind(block);
     panel.append(heading, inspector);
 
@@ -194,10 +198,12 @@ export class TruncusEditor extends HTMLElement {
       actions.append(control);
     };
 
-    addAction('Move up', index > 0, () => this.#model.move(siblings, block, -1));
-    addAction('Move down', index < siblings.length - 1, () => this.#model.move(siblings, block, 1));
-    addAction('Duplicate', siblings.length < (slot.max ?? Infinity), () => this.#model.duplicate(siblings, block));
-    addAction('Remove', siblings.length > (slot.min ?? 0), () => this.#model.remove(location, block));
+    const reserved = this.#model.isReserved(siblings, block);
+    const nextReserved = this.#model.isReserved(siblings, siblings[index + 1]);
+    addAction('Move up', !reserved && index > 0, () => this.#model.move(siblings, block, -1));
+    addAction('Move down', !reserved && !nextReserved && index < siblings.length - 1, () => this.#model.move(siblings, block, 1));
+    addAction('Duplicate', !reserved && siblings.length < (slot.max ?? Infinity), () => this.#model.duplicate(siblings, block));
+    addAction('Remove', !reserved && siblings.length > (slot.min ?? 0), () => this.#model.remove(location, block));
     return actions;
   }
 }

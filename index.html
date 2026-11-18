@@ -9,12 +9,13 @@
 main{max-width:1520px;margin:auto;padding:clamp(16px,3vw,48px)}
 header{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-bottom:24px}
 h1{font:600 38px Georgia,serif;letter-spacing:-.06em;margin:0}
-nav{display:flex;flex-wrap:wrap;gap:7px}button{font:inherit;background:white;color:inherit;border:1px solid #bac8b9;border-radius:6px;padding:7px 12px;cursor:pointer}
+nav{display:flex;flex-wrap:wrap;gap:7px}button,select{font:inherit;background:white;color:inherit;border:1px solid #bac8b9;border-radius:6px;padding:7px 12px;cursor:pointer}
 button:last-of-type{background:#254d39;color:white}button:focus-visible{outline:3px solid #2168a1}#status{font-size:.875rem}
 </style>
 <script type="module" src="./demo.js"></script>
 </head>
 <body><main><header><h1>Truncus</h1><nav aria-label="Document files">
+<select id="new-type" aria-label="New page type"></select><button id="new">New page</button>
 <button id="import">Open JSON</button><input id="file" type="file" accept=".json,application/json" hidden>
 <button id="save">Save JSON</button><button id="export">Export HTML</button>
 </nav></header><truncus-editor></truncus-editor><p role="status" id="status"></p></main></body>

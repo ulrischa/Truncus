@@ -1,4 +1,5 @@
-import {createBlock, validateDocument} from './model.js';
+import {pageType} from './page-types.js';
+import {createPageBlock, validateDocument} from './model.js';
 
 /**
  * Owns one editor's working tree and selection. Blocks retain object identity
@@ -12,6 +13,15 @@ export class EditorDocument {
   /** Internal read access for the outline and renderer. Use snapshot() for callers. */
   get document() {
     return this.#document;
+  }
+
+  get page() {
+    return pageType(this.#document.pageType ?? 'free');
+  }
+
+  /** Only a direct root child can be the reserved final block. */
+  isReserved(siblings, block) {
+    return siblings === this.#document.blocks && block?.type === this.page.requiredLast;
   }
 
   get selection() {
@@ -51,7 +61,9 @@ export class EditorDocument {
   }
 
   add(siblings, type) {
-    this.#insert(siblings, siblings.length, createBlock(type));
+    const last = siblings.at(-1);
+    const index = this.isReserved(siblings, last) ? siblings.length - 1 : siblings.length;
+    this.#insert(siblings, index, createPageBlock(type, this.page));
   }
 
   duplicate(siblings, block) {
@@ -76,13 +88,14 @@ export class EditorDocument {
     const index = siblings.indexOf(block);
     const destination = index + offset;
     if (index < 0 || destination < 0 || destination >= siblings.length) return;
+    if (this.isReserved(siblings, block) || this.isReserved(siblings, siblings[destination])) return;
     siblings.splice(index, 1);
     siblings.splice(destination, 0, block);
   }
 
   /** Keep selection close to the removed block, including in a newly empty slot. */
   remove({siblings, slot, parent}, block) {
-    if (siblings.length <= (slot.min ?? 0)) return;
+    if (siblings.length <= (slot.min ?? 0) || this.isReserved(siblings, block)) return;
     const index = siblings.indexOf(block);
     siblings.splice(index, 1);
     this.select(siblings[index] ?? siblings[index - 1] ?? parent);

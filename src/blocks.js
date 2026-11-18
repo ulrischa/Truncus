@@ -1,3 +1,4 @@
+import {registerPageType} from './page-types.js';
 import {register} from './model.js';
 import {Heading, Paragraph, Link} from './blocks/text.js';
 import {Repeater, LinkRepeater, LinkList} from './blocks/lists.js';
@@ -14,3 +15,9 @@ register('link-list', LinkList);
 register('accordion-item', AccordionItem);
 register('accordion', Accordion);
 register('teaser', Teaser);
+
+registerPageType('guide', {
+  label: 'Guide',
+  requiredLast: 'link-list',
+  fieldOptions: {heading: {level: ['2', '3', '4', '5', '6']}}
+});

@@ -1,4 +1,4 @@
-import {createBlock, serializeHTML} from './src/truncus.js';
+import {createBlock, createDocument, pageType, pageTypes, serializeHTML} from './src/truncus.js';
 
 const editor = document.querySelector('truncus-editor');
 const status = document.querySelector('#status');
@@ -33,6 +33,16 @@ try {
   status.textContent = saved ? 'Restored from this browser.' : 'Example document';
 } catch { status.textContent = 'Could not restore the local draft. Showing the example document.'; }
 editor.addEventListener('truncus-change', persist);
+
+const typePicker = document.querySelector('#new-type');
+for (const key of pageTypes()) {
+  typePicker.add(new Option(pageType(key).label, key));
+}
+document.querySelector('#new').onclick = () => {
+  if (!window.confirm('Replace the current draft? Use Save JSON first to keep a copy.')) return;
+  editor.value = createDocument(typePicker.value);
+  persist();
+};
 
 document.querySelector('#import').onclick = () => file.click();
 file.onchange = async () => {
