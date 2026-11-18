@@ -19,9 +19,20 @@ export class EditorDocument {
     return pageType(this.#document.pageType ?? 'free');
   }
 
-  /** Only a direct root child can be the reserved final block. */
-  isReserved(siblings, block) {
-    return siblings === this.#document.blocks && block?.type === this.page.requiredLast;
+  canAdd(siblings, type) {
+    return siblings !== this.#document.blocks || this.page.layout.canAdd(siblings, type);
+  }
+
+  canRemove({siblings, slot}, block) {
+    if (siblings.length <= (slot.min ?? 0)) return false;
+    return siblings !== this.#document.blocks || this.page.layout.canRemove(siblings, block.type);
+  }
+
+  canMove(siblings, index, offset) {
+    const neighbor = siblings[index + offset];
+    if (!neighbor || !siblings[index]) return false;
+    const layout = this.page.layout;
+    return siblings !== this.#document.blocks || layout.regionFor(siblings[index].type) === layout.regionFor(neighbor.type);
   }
 
   get selection() {
@@ -61,8 +72,9 @@ export class EditorDocument {
   }
 
   add(siblings, type) {
-    const last = siblings.at(-1);
-    const index = this.isReserved(siblings, last) ? siblings.length - 1 : siblings.length;
+    const index = siblings === this.#document.blocks
+      ? this.page.layout.insertionIndex(siblings, type)
+      : siblings.length;
     this.#insert(siblings, index, createPageBlock(type, this.page));
   }
 
@@ -70,34 +82,38 @@ export class EditorDocument {
     this.#insert(siblings, siblings.indexOf(block) + 1, structuredClone(block));
   }
 
-  // Validate the entire tree: even a locally permitted child can exceed the
-  // document's depth or size limit. A failed insertion keeps the old selection.
-  #insert(siblings, index, block) {
-    siblings.splice(index, 0, block);
+  // A rule can depend on any part of the document. Check the final candidate
+  // after every structural operation, restoring the same block objects on failure.
+  #changeList(siblings, change) {
+    const previous = siblings.slice();
     try {
+      change();
       validateDocument(this.#document);
     } catch (error) {
-      siblings.splice(index, 1);
+      siblings.splice(0, siblings.length, ...previous);
       throw error;
     }
+  }
+
+  #insert(siblings, index, block) {
+    this.#changeList(siblings, () => siblings.splice(index, 0, block));
     this.select(block);
   }
 
-  /** Reordering within the same slot preserves its type and cardinality rules. */
   move(siblings, block, offset) {
     const index = siblings.indexOf(block);
-    const destination = index + offset;
-    if (index < 0 || destination < 0 || destination >= siblings.length) return;
-    if (this.isReserved(siblings, block) || this.isReserved(siblings, siblings[destination])) return;
-    siblings.splice(index, 1);
-    siblings.splice(destination, 0, block);
+    if (!this.canMove(siblings, index, offset)) throw new Error('Cannot move across this boundary.');
+    this.#changeList(siblings, () => {
+      siblings.splice(index, 1);
+      siblings.splice(index + offset, 0, block);
+    });
   }
 
-  /** Keep selection close to the removed block, including in a newly empty slot. */
-  remove({siblings, slot, parent}, block) {
-    if (siblings.length <= (slot.min ?? 0) || this.isReserved(siblings, block)) return;
+  remove(location, block) {
+    if (!this.canRemove(location, block)) throw new Error('This block is required.');
+    const {siblings, parent} = location;
     const index = siblings.indexOf(block);
-    siblings.splice(index, 1);
+    this.#changeList(siblings, () => siblings.splice(index, 1));
     this.select(siblings[index] ?? siblings[index - 1] ?? parent);
   }
 }

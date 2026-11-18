@@ -65,5 +65,10 @@ function download(name, mime, content) {
 }
 document.querySelector('#save').onclick = () =>
   download('truncus.json', 'application/json', JSON.stringify(editor.value, null, 2));
-document.querySelector('#export').onclick = () =>
-  download('truncus.html', 'text/html', '<!doctype html>\n<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Truncus document</title><main>' + serializeHTML(editor.value) + '</main></html>');
+document.querySelector('#export').onclick = () => {
+  try {
+    download('truncus.html', 'text/html', '<!doctype html>\n<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Truncus document</title><main>' + serializeHTML(editor.value) + '</main></html>');
+  } catch (error) {
+    status.textContent = 'Could not export page. ' + error.message;
+  }
+};

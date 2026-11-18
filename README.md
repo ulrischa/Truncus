@@ -32,23 +32,9 @@ The demo stores one draft per browser origin in local storage. Opening another d
 
 Choose **Guide** in the new-page selector and select **New page**. Truncus creates the required final link list. Add a heading or teaser: the editor inserts it before the list and offers heading levels 2–6, including inside nested blocks. You can edit the links in the final list. The list itself stays in place. **Free page** allows all heading levels and imposes no final block.
 
-A page type is the schema of the document root. It adds no wrapper to the exported HTML. Register a type after its block types and before loading documents that use it.
+Choose **Feature article** for a different structure: one opening teaser, a body of headings, paragraphs or accordions, and up to two reference lists. Adding a block places it in the appropriate region.
 
-```js
-import {createDocument, registerPageType} from './src/truncus.js';
-
-registerPageType('service-page', {
-  label: 'Service page',
-  fieldOptions: {heading: {level: ['2', '3', '4', '5', '6']}},
-  requiredLast: 'link-list'
-});
-
-document.querySelector('truncus-editor').value = createDocument('service-page');
-```
-
-Both rules are optional. `fieldOptions` narrows an existing block's enum field at every depth. For newly created blocks, the first permitted choice supplies the default if the original default is excluded. `requiredLast` reserves exactly one direct root block of the named type, in the final position. Nested link lists are independent. These rules operate on registered block data. Custom renderers that emit headings directly should model the heading level as a field or compose the standard heading block.
-
-Typed documents store `version: 2` and the stable `pageType` key alongside `blocks`. The editor checks the same rules during edits, JSON import and HTML rendering. Unknown types and invalid documents are rejected. Existing version 1 files keep their original unrestricted behavior and format.
+Define your own ordered root regions, field restrictions and reusable validation rules through the public API. Rules may inspect the whole document or a block in its parent slot. Publication-only checks let authors save an incomplete draft. [Designing a page type](docs/page-types.md) walks through a complete example, rule contexts, compatibility and the core-only entry point.
 
 ## Built-in blocks
 
@@ -69,7 +55,7 @@ Typed documents store `version: 2` and the stable `pageType` key alongside `bloc
 ```html
 <truncus-editor id="article"></truncus-editor>
 <script type="module">
-  import {createBlock, serializeHTML} from './src/truncus.js';
+  import {createBlock} from './src/truncus.js';
 
   const editor = document.querySelector('#article');
   const heading = createBlock('heading');
@@ -78,8 +64,8 @@ Typed documents store `version: 2` and the stable `pageType` key alongside `bloc
 
   editor.addEventListener('truncus-change', () => {
     const source = editor.value;
-    const html = serializeHTML(source);
-    // Pass source to your storage layer and html to your publishing layer.
+    // Save the editable snapshot through the host application's storage layer.
+    // In the separate publish action, call serializeHTML(source) and handle rule errors.
   });
 </script>
 ```

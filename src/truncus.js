@@ -1,6 +1,4 @@
-import './blocks.js';
-export {TruncusEditor} from './editor.js';
-export {TruncusBlock} from './component.js';
-export {renderDocument, serializeHTML} from './renderer.js';
-export {createDocument, createBlock, register, validateDocument, definition, blockTypes} from './model.js';
-export {registerPageType, pageType, pageTypes} from './page-types.js';
+// The default distribution includes the standard block catalog and page presets.
+// Applications that supply their own catalog can import core.js directly.
+import './pages.js';
+export * from './core.js';

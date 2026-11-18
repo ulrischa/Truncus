@@ -41,7 +41,7 @@ export class TruncusBlock extends HTMLElement {
     container.replaceChildren();
     for (const [key, field] of Object.entries(this.constructor.fields)) {
       const label = element('label', field.label);
-      const choices = this.pageType?.choices(block.type, key) ?? field.options;
+      const choices = this.fieldChoices?.[key] ?? field.options;
       const input = createFieldControl(field, choices);
       input.value = block.attributes[key];
       input.addEventListener('input', () => this.setAttributeValue(key, input.value));

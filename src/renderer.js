@@ -10,9 +10,14 @@ function renderBlock(block) {
   return component.render(block.attributes, renderedSlots, element);
 }
 
-/** Render a version 1 document into a fresh fragment for preview or publication. */
-export function renderDocument(doc) {
-  validateDocument(doc);
+/** Render a valid document into a fresh fragment for preview or publication. */
+export function renderDocument(doc, options) {
+  validateDocument(doc, options);
+  return renderValidatedDocument(doc);
+}
+
+/** Internal editor path: mutations and imports have already validated this tree. */
+export function renderValidatedDocument(doc) {
   const fragment = document.createDocumentFragment();
   for (const block of doc.blocks) fragment.append(renderBlock(block));
   return fragment;
@@ -21,6 +26,6 @@ export function renderDocument(doc) {
 /** Serialize published content without the editor's controls or shadow roots. */
 export function serializeHTML(doc) {
   const container = element('div');
-  container.append(renderDocument(doc));
+  container.append(renderDocument(doc, {phase: 'publish'}));
   return container.innerHTML;
 }

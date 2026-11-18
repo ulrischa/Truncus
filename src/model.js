@@ -1,3 +1,5 @@
+import {definition, blockTypes} from './registry.js';
+export {definition, blockTypes, register} from './registry.js';
 import {pageType} from './page-types.js';
 
 /**
@@ -12,34 +14,11 @@ import {pageType} from './page-types.js';
  * @property {Block[]} blocks Top-level blocks in reading order.
  */
 
-const types = new Map();
-const namePattern = /^[a-z][a-z0-9-]*$/;
 const maxBlocks = 5000;
 const maxDepth = 64;
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-/** Return registered type keys in insertion order, as shown in block pickers. */
-export function blockTypes() {
-  return [...types.keys()];
-}
-
-/** Resolve the class that defines a type's schema, inspector and HTML renderer. */
-export function definition(type) {
-  const component = types.get(type);
-  if (!component) throw new Error('Unknown block type: ' + type);
-  return component;
-}
-
-/** Register a stable storage key and its associated browser custom element. */
-export function register(type, component) {
-  if (!namePattern.test(type) || types.has(type)) {
-    throw new Error('Invalid or duplicate block: ' + type);
-  }
-  customElements.define('truncus-block-' + type, component);
-  types.set(type, component);
 }
 
 /** Check the resolved scheme while preserving relative URLs in published HTML. */
@@ -60,6 +39,15 @@ export function createBlock(type) {
 
 /** Apply page defaults recursively, including those of required child blocks. */
 export function createPageBlock(type, page) {
+  return buildDefault(type, page, new Set(), {count: 0});
+}
+
+// A recursive slot is fine when it starts empty. A cycle of nonempty defaults
+// would never terminate, so reject it before constructing another descendant.
+function buildDefault(type, page, ancestors, budget) {
+  if (ancestors.has(type)) throw new Error('Cyclic initial block definitions: ' + type);
+  if (ancestors.size >= maxDepth || ++budget.count > maxBlocks) throw new Error('Initial block tree exceeds document limits.');
+  ancestors.add(type);
   const schema = definition(type);
   const attributes = Object.fromEntries(Object.entries(schema.fields).map(([key, field]) => {
     const choices = page.choices(type, key);
@@ -67,8 +55,9 @@ export function createPageBlock(type, page) {
     return [key, choices && !choices.includes(initial) ? choices[0] : initial];
   }));
   const slots = Object.fromEntries(
-    Object.entries(schema.slots).map(([key, slot]) => [key, (slot.initial ?? []).map(child => createPageBlock(child, page))])
+    Object.entries(schema.slots).map(([key, slot]) => [key, (slot.initial ?? []).map(child => buildDefault(child, page, ancestors, budget))])
   );
+  ancestors.delete(type);
   return {type, attributes, slots};
 }
 
@@ -139,10 +128,12 @@ class DocumentValidator {
 /**
  * Validate structure, schema and ownership without modifying the input.
  * @param {TruncusDocument} doc
+ * @param {{phase?: 'edit'|'publish'}} [options] Publication also checks completion rules.
  * @returns {TruncusDocument} The original document on success.
  * @throws {Error} When a block or slot violates its schema or page rules.
  */
-export function validateDocument(doc) {
+export function validateDocument(doc, {phase = 'edit'} = {}) {
+  if (phase !== 'edit' && phase !== 'publish') throw new Error('Unknown validation phase: ' + phase);
   if (!isRecord(doc) || ![1, 2].includes(doc.version) || !Array.isArray(doc.blocks)) {
     throw new Error('Expected a version 1 or 2 Truncus document.');
   }
@@ -153,12 +144,14 @@ export function validateDocument(doc) {
   page.validateRoot(doc.blocks);
   const validator = new DocumentValidator(page);
   for (const block of doc.blocks) validator.visit(block, 1);
+  page.validateRules(doc, phase);
   return doc;
 }
 
 /** Create a typed document with its required root content already present. */
 export function createDocument(key = 'free') {
   const page = pageType(key);
-  const blocks = page.requiredLast ? [createPageBlock(page.requiredLast, page)] : [];
+  const budget = {count: 0};
+  const blocks = page.layout.initialTypes().map(type => buildDefault(type, page, new Set(), budget));
   return validateDocument({version: 2, pageType: key, blocks});
 }

@@ -1,19 +1,30 @@
-import {definition} from './model.js';
+import {definition} from './registry.js';
+import {RootLayout} from './root-layout.js';
+import {compileRules, checkRules} from './page-rules.js';
 
 const pages = new Map();
 
 /**
  * A page type describes the document root. Field restrictions apply throughout
- * the tree; requiredLast reserves exactly one position among its direct children.
+ * the tree; root regions govern order and cardinality. Custom rules inspect validated data.
  */
 export class PageType {
   #fieldOptions = new Map();
 
-  constructor({label, requiredLast = null, fieldOptions = {}}) {
+  #rules;
+
+  constructor({label, requiredLast = null, fieldOptions = {}, regions, rules = []}) {
     if (typeof label !== 'string' || !label.trim()) throw new Error('A page type needs a label.');
     this.label = label;
     this.requiredLast = requiredLast;
-    if (requiredLast !== null) definition(requiredLast);
+    // Translate the original shorthand once. The editor only sees a root layout.
+    if (regions !== undefined && requiredLast !== null) throw new Error('Choose regions or requiredLast.');
+    const defaultRegions = [{name: 'content'}];
+    if (requiredLast !== null) {
+      defaultRegions.push({name: 'ending', accept: [requiredLast], min: 1, max: 1, initial: [requiredLast]});
+    }
+    this.layout = new RootLayout(regions === undefined ? defaultRegions : regions);
+    this.#rules = compileRules(rules);
 
     for (const [type, fields] of Object.entries(fieldOptions)) {
       const schema = definition(type);
@@ -43,11 +54,11 @@ export class PageType {
   }
 
   validateRoot(blocks) {
-    if (this.requiredLast === null) return;
-    const matching = blocks.filter(block => block?.type === this.requiredLast);
-    if (matching.length !== 1 || blocks.at(-1) !== matching[0]) {
-      throw new Error(this.label + ' requires exactly one final ' + this.requiredLast + ' block.');
-    }
+    this.layout.validate(blocks);
+  }
+
+  validateRules(document, phase) {
+    checkRules(this.#rules, document, phase);
   }
 }
 

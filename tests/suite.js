@@ -159,4 +159,91 @@ test('Custom page types apply restricted defaults inside required children', () 
   assert(feature.blocks[0].slots.title[0].attributes.level === '3');
   assert(createDocument('free').blocks.length === 0);
 });
+test('Ordered regions control insertion, movement, duplicates and required counts', () => {
+  const editor = document.createElement('truncus-editor');
+  editor.value = createDocument('feature');
+  const tree = editor.shadowRoot.querySelector('#tree');
+  const settings = editor.shadowRoot.querySelector('#settings');
+  const action = label => [...settings.querySelectorAll('button')].find(button => button.textContent === label);
+  const add = type => {
+    tree.querySelector('select').value = type;
+    tree.querySelector('.picker button').click();
+  };
+  assert(action('Move down').disabled && action('Remove').disabled);
+  add('link-list');
+  action('Duplicate').click();
+  assert(action('Duplicate').disabled);
+  assert(![...tree.querySelector('select').options].some(option => option.value === 'link-list'));
+  add('heading');
+  assert(editor.value.blocks.map(block => block.type).join() === 'teaser,paragraph,heading,link-list,link-list');
+  assert(action('Move down').disabled && !action('Move up').disabled);
+  const invalid = editor.value;
+  invalid.blocks.reverse();
+  rejects(() => { editor.value = invalid; });
+  assert(editor.value.blocks[0].type === 'teaser');
+});
+
+test('Extension rules can reject moves and removals without losing state or notifying the host', () => {
+  registerPageType('ordered-pair', {
+    label: 'Pair',
+    regions: [{name: 'content', initial: ['heading', 'paragraph']}],
+    rules: [{
+      id: 'opening-pair',
+      check({document}) {
+        const [first, second] = document.blocks;
+        if (first?.type !== 'heading' || second?.type !== 'paragraph') return 'Keep the opening pair.';
+      }
+    }]
+  });
+  const editor = document.createElement('truncus-editor');
+  editor.value = createDocument('ordered-pair');
+  let changes = 0;
+  editor.addEventListener('truncus-change', () => changes++);
+  const initial = JSON.stringify(editor.value);
+  for (const label of ['Move down', 'Remove', 'Duplicate']) {
+    const buttons = editor.shadowRoot.querySelectorAll('#settings button');
+    [...buttons].find(button => button.textContent === label).click();
+    assert(editor.shadowRoot.querySelector('#feedback').textContent.includes('Keep the opening pair.'));
+    assert(JSON.stringify(editor.value) === initial && changes === 0);
+  }
+});
+
+test('Reusable publish rules distinguish drafts and identify nested violations', () => {
+  registerPageType('publish-test', {
+    label: 'Publish test',
+    rules: [{
+      id: 'concrete-action',
+      scope: 'block',
+      phase: 'publish',
+      check({parent, slot, block}) {
+        if (parent?.type === 'teaser' && slot === 'action' && block.attributes.href === '#') {
+          return 'Enter the teaser destination.';
+        }
+      }
+    }]
+  });
+  const document = createDocument('publish-test');
+  document.blocks.push(createBlock('teaser'));
+  assert(renderDocument(document).querySelector('a'));
+  let issue;
+  try { serializeHTML(document); } catch (error) { issue = error; }
+  assert(issue.ruleId === 'concrete-action' && issue.path === '$.blocks[0].slots["action"][0]');
+  document.blocks[0].slots.action[0].attributes.href = '/contact';
+  assert(serializeHTML(document).includes('/contact'));
+});
+
+test('Configuration errors and cyclic defaults fail explicitly', () => {
+  rejects(() => registerPageType('bad-regions', {
+    label: 'Invalid', regions: [{name: 'one', accept: ['link']}, {name: 'two', accept: ['link']}]
+  }));
+  rejects(() => registerPageType('bad-default', {
+    label: 'Invalid', regions: [{name: 'one', min: 1}]
+  }));
+  rejects(() => registerPageType('bad-rule', {label: 'Invalid', rules: [{id: 'missing-check'}]}));
+  class Recursive extends TruncusBlock {
+    static slots = {items: {label: 'Items', initial: ['recursive-test']}};
+  }
+  register('recursive-test', Recursive);
+  rejects(() => createBlock('recursive-test'));
+});
 document.documentElement.dataset.result = failures ? 'failed' : 'passed';

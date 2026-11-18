@@ -1,6 +1,6 @@
 import {allowedTypes, definition} from './model.js';
 import {element} from './dom.js';
-import {renderDocument} from './renderer.js';
+import {renderValidatedDocument} from './renderer.js';
 import {EditorDocument} from './editor-document.js';
 
 function button(label, action) {
@@ -75,7 +75,7 @@ export class TruncusEditor extends HTMLElement {
   }
 
   #preview() {
-    this.#get('preview').replaceChildren(renderDocument(this.#model.document));
+    this.#get('preview').replaceChildren(renderValidatedDocument(this.#model.document));
   }
 
   #draw() {
@@ -115,12 +115,14 @@ export class TruncusEditor extends HTMLElement {
     const select = element('select');
     select.setAttribute('aria-label', 'Block type for ' + slot.label);
     for (const type of allowedTypes(slot)) {
-      if (siblings === this.#model.document.blocks && type === this.#model.page.requiredLast) continue;
+      if (!this.#model.canAdd(siblings, type)) continue;
       const option = element('option', definition(type).label);
       option.value = type;
       select.append(option);
     }
-    row.append(select, button('Add', () => this.#apply(() => this.#model.add(siblings, select.value))));
+    const add = button('Add', () => this.#apply(() => this.#model.add(siblings, select.value)));
+    select.disabled = add.disabled = !select.options.length;
+    row.append(select, add);
     return row;
   }
 
@@ -170,6 +172,11 @@ export class TruncusEditor extends HTMLElement {
     const heading = element('h3', type.label);
     heading.tabIndex = -1;
     const inspector = element('truncus-block-' + block.type);
+    // Inspectors receive effective field choices, without having to interpret page rules.
+    inspector.fieldChoices = Object.fromEntries(Object.keys(type.fields).map(key =>
+      [key, this.#model.page.choices(block.type, key) ?? type.fields[key].options]
+    ));
+    // Preserve the original inspector property for existing third-party extensions.
     inspector.pageType = this.#model.page;
     inspector.bind(block);
     panel.append(heading, inspector);
@@ -198,12 +205,12 @@ export class TruncusEditor extends HTMLElement {
       actions.append(control);
     };
 
-    const reserved = this.#model.isReserved(siblings, block);
-    const nextReserved = this.#model.isReserved(siblings, siblings[index + 1]);
-    addAction('Move up', !reserved && index > 0, () => this.#model.move(siblings, block, -1));
-    addAction('Move down', !reserved && !nextReserved && index < siblings.length - 1, () => this.#model.move(siblings, block, 1));
-    addAction('Duplicate', !reserved && siblings.length < (slot.max ?? Infinity), () => this.#model.duplicate(siblings, block));
-    addAction('Remove', !reserved && siblings.length > (slot.min ?? 0), () => this.#model.remove(location, block));
+    for (const [label, offset] of [['Move up', -1], ['Move down', 1]]) {
+      addAction(label, this.#model.canMove(siblings, index, offset), () => this.#model.move(siblings, block, offset));
+    }
+    const canDuplicate = siblings.length < (slot.max ?? Infinity) && this.#model.canAdd(siblings, block.type);
+    addAction('Duplicate', canDuplicate, () => this.#model.duplicate(siblings, block));
+    addAction('Remove', this.#model.canRemove(location, block), () => this.#model.remove(location, block));
     return actions;
   }
 }
