@@ -1,9 +1,16 @@
-import {definition, validateDocument} from './model.js';
+import {element} from './dom.js';
 
-export function element(tag, text) {
-  const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
-  return node;
+// Preserve direct module imports used by existing extensions.
+export {element} from './dom.js';
+export {renderDocument, serializeHTML} from './renderer.js';
+
+function createFieldControl(field) {
+  if (field.options) {
+    const select = element('select');
+    for (const choice of field.options) select.append(element('option', choice));
+    return select;
+  }
+  return element(field.kind === 'multiline' ? 'textarea' : 'input');
 }
 
 const inspector = document.createElement('template');
@@ -13,6 +20,11 @@ inspector.innerHTML = `<style>
   textarea{min-height:6rem;resize:vertical}
 </style><slot name="before-fields"></slot><div></div><slot name="after-fields"></slot>`;
 
+/**
+ * Base inspector for registered block types. Subclasses declare their schema
+ * and implement static render(attributes, renderedSlots, element).
+ * An instance exists for the selected block only; JSON stores its data.
+ */
 export class TruncusBlock extends HTMLElement {
   static fields = {};
   static slots = {};
@@ -22,14 +34,14 @@ export class TruncusBlock extends HTMLElement {
     this.attachShadow({mode: 'open'}).append(inspector.content.cloneNode(true));
   }
 
+  /** Bind a working block. Custom inspectors should request edits via setAttributeValue(). */
   bind(block) {
     this.block = block;
     const container = this.shadowRoot.querySelector('div');
     container.replaceChildren();
     for (const [key, field] of Object.entries(this.constructor.fields)) {
       const label = element('label', field.label);
-      const input = element(field.options ? 'select' : field.kind === 'multiline' ? 'textarea' : 'input');
-      if (field.options) for (const choice of field.options) input.append(element('option', choice));
+      const input = createFieldControl(field);
       input.value = block.attributes[key];
       input.addEventListener('input', () => this.setAttributeValue(key, input.value));
       label.append(input);
@@ -37,24 +49,8 @@ export class TruncusBlock extends HTMLElement {
     }
   }
 
+  /** Send an edit request across shadow boundaries for validation by the owning editor. */
   setAttributeValue(key, value) {
     this.dispatchEvent(new CustomEvent('truncus-edit', {detail: {key, value}, bubbles: true, composed: true}));
   }
-}
-
-export function renderDocument(doc) {
-  validateDocument(doc);
-  function render(node) {
-    const slots = Object.fromEntries(Object.entries(node.slots).map(([key, items]) => [key, items.map(render)]));
-    return definition(node.type).render(node.attributes, slots, element);
-  }
-  const fragment = document.createDocumentFragment();
-  fragment.append(...doc.blocks.map(render));
-  return fragment;
-}
-
-export function serializeHTML(doc) {
-  const container = element('div');
-  container.append(renderDocument(doc));
-  return container.innerHTML;
 }

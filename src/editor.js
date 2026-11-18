@@ -1,5 +1,7 @@
-import {allowedTypes, createBlock, definition, validateDocument} from './model.js';
-import {element, renderDocument} from './component.js';
+import {allowedTypes, definition} from './model.js';
+import {element} from './dom.js';
+import {renderDocument} from './renderer.js';
+import {EditorDocument} from './editor-document.js';
 
 function button(label, action) {
   const control = element('button', label);
@@ -16,62 +18,98 @@ template.innerHTML = `<link rel="stylesheet"><div class="workspace">
   </div><p role="status" id="feedback"></p>`;
 template.content.querySelector('link').href = new URL('./editor.css', import.meta.url).href;
 
+/**
+ * Coordinates the document outline, live preview and the selected block's
+ * inspector. The model owns mutations; this element owns focus and events.
+ */
 export class TruncusEditor extends HTMLElement {
-  #doc = {version: 1, blocks: []};
-  #selected = null;
+  #model = new EditorDocument();
   #locations = new Map();
 
   constructor() {
     super();
     this.attachShadow({mode: 'open'}).append(template.content.cloneNode(true));
     this.shadowRoot.addEventListener('truncus-edit', event => {
-      const {key, value} = event.detail;
-      const block = this.#selected;
-      if (!block || !Object.hasOwn(block.attributes, key)) return;
-      const previous = block.attributes[key];
-      block.attributes[key] = value;
-      try { validateDocument(this.#doc); }
-      catch (error) {
-        block.attributes[key] = previous;
-        this.#feedback(error.message + '. This edit was not saved.');
-        return;
-      }
-      this.#outline();
-      this.#preview();
-      this.#changed();
+      this.#editField(event.detail);
     });
   }
 
-  connectedCallback() { this.#draw(); }
-  get value() { return structuredClone(this.#doc); }
-  set value(doc) {
-    const copy = structuredClone(doc);
-    this.#doc = validateDocument(copy);
-    this.#selected = copy.blocks[0] ?? null;
+  connectedCallback() {
     this.#draw();
   }
 
-  #get(id) { return this.shadowRoot.getElementById(id); }
-  #feedback(message) { this.#get('feedback').textContent = message; }
+  /** Read a detached snapshot; assign a version 1 document to load it. */
+  get value() {
+    return this.#model.snapshot();
+  }
+
+  set value(document) {
+    this.#model.load(document);
+    this.#draw();
+  }
+
+  #editField({key, value}) {
+    try {
+      if (!this.#model.edit(key, value)) return;
+    } catch (error) {
+      this.#feedback(error.message + '. This edit was not saved.');
+      return;
+    }
+    // Keep the active input mounted so typing preserves its focus and caret.
+    this.#outline();
+    this.#preview();
+    this.#changed();
+  }
+
+  #get(id) {
+    return this.shadowRoot.getElementById(id);
+  }
+
+  #feedback(message) {
+    this.#get('feedback').textContent = message;
+  }
+
   #changed() {
     this.#feedback('');
     this.dispatchEvent(new CustomEvent('truncus-change', {bubbles: true, composed: true}));
   }
+
   #preview() {
-    this.#get('preview').replaceChildren(renderDocument(this.#doc));
+    this.#get('preview').replaceChildren(renderDocument(this.#model.document));
   }
+
   #draw() {
     this.#outline();
     this.#settings();
     this.#preview();
     this.#feedback('');
   }
-  #select(block) {
-    this.#selected = block;
-    this.#draw();
-    this.#get('settings').querySelector('h3')?.focus();
+
+  #focusSelection() {
+    const target = this.#get('settings').querySelector('h3') ?? this.#get('tree').querySelector('select');
+    target?.focus();
   }
-  #picker(slot, list) {
+
+  #select(block) {
+    this.#model.select(block);
+    this.#draw();
+    this.#focusSelection();
+  }
+
+  /** Publish one change only after a structural command completes successfully. */
+  #apply(command) {
+    try {
+      command();
+    } catch (error) {
+      this.#feedback(error.message);
+      return;
+    }
+    this.#draw();
+    this.#focusSelection();
+    this.#changed();
+  }
+
+  #picker(slot, siblings) {
     const row = element('div');
     row.className = 'picker';
     const select = element('select');
@@ -81,89 +119,87 @@ export class TruncusEditor extends HTMLElement {
       option.value = type;
       select.append(option);
     }
-    row.append(select, button('Add', () => {
-      const block = createBlock(select.value);
-      list.push(block);
-      try { validateDocument(this.#doc); }
-      catch (error) { list.pop(); this.#feedback(error.message); return; }
-      this.#select(block);
-      this.#changed();
-    }));
+    row.append(select, button('Add', () => this.#apply(() => this.#model.add(siblings, select.value))));
     return row;
   }
 
   #outline() {
     this.#locations.clear();
-    const build = (list, slot, parent) => {
-      const ul = element('ul');
-      for (const block of list) {
-        this.#locations.set(block, {list, slot, parent});
-        const li = element('li');
-        const type = definition(block.type);
-        const title = block.attributes.text || block.attributes.summary;
-        const pick = button(title || type.label, () => this.#select(block));
-        pick.title = type.label;
-        pick.setAttribute('aria-pressed', String(block === this.#selected));
-        li.append(pick);
-        for (const [name, nested] of Object.entries(block.slots)) {
-          if (nested.length) li.append(build(nested, type.slots[name], block));
-        }
-        ul.append(li);
+    const rootSlot = {label: 'Document'};
+    const roots = this.#model.document.blocks;
+    this.#get('tree').replaceChildren(
+      this.#outlineList(roots, rootSlot, null),
+      this.#picker(rootSlot, roots)
+    );
+  }
+
+  // Index ownership during the traversal we already need for the outline.
+  // The root list behaves like a slot whose parent is null.
+  #outlineList(siblings, slot, parent) {
+    const list = element('ul');
+    for (const block of siblings) {
+      this.#locations.set(block, {siblings, slot, parent});
+      const item = element('li');
+      const type = definition(block.type);
+      const label = block.attributes.text || block.attributes.summary || type.label;
+      const select = button(label, () => this.#select(block));
+      select.title = type.label;
+      select.setAttribute('aria-pressed', String(block === this.#model.selection));
+      item.append(select);
+
+      for (const [name, children] of Object.entries(block.slots)) {
+        if (children.length) item.append(this.#outlineList(children, type.slots[name], block));
       }
-      return ul;
-    };
-    const root = {label: 'Document'};
-    this.#get('tree').replaceChildren(build(this.#doc.blocks, root, null), this.#picker(root, this.#doc.blocks));
+      list.append(item);
+    }
+    return list;
   }
 
   #settings() {
     const panel = this.#get('settings');
-    const block = this.#selected;
+    const block = this.#model.selection;
     panel.replaceChildren();
-    if (!block) { panel.append(element('p', 'Add a block to start writing.')); return; }
+    if (!block) {
+      panel.append(element('p', 'Add a block to start writing.'));
+      return;
+    }
     const type = definition(block.type);
     const heading = element('h3', type.label);
     heading.tabIndex = -1;
-    const editor = element('truncus-block-' + block.type);
-    editor.bind(block);
-    panel.append(heading, editor);
+    const inspector = element('truncus-block-' + block.type);
+    inspector.bind(block);
+    panel.append(heading, inspector);
+
     for (const [key, slot] of Object.entries(type.slots)) {
-      const items = block.slots[key];
+      const children = block.slots[key];
       panel.append(element('h4', slot.label));
-      for (const child of items) panel.append(button('Edit ' + definition(child.type).label, () => this.#select(child)));
-      if (items.length < (slot.max ?? Infinity)) panel.append(this.#picker(slot, items));
+      for (const child of children) {
+        panel.append(button('Edit ' + definition(child.type).label, () => this.#select(child)));
+      }
+      if (children.length < (slot.max ?? Infinity)) panel.append(this.#picker(slot, children));
     }
-    const {list, slot, parent} = this.#locations.get(block);
-    const i = list.indexOf(block);
+    panel.append(this.#blockActions(block));
+  }
+
+  #blockActions(block) {
+    const location = this.#locations.get(block);
+    const {siblings, slot} = location;
+    const index = siblings.indexOf(block);
     const actions = element('div');
     actions.className = 'actions';
-    for (const [label, offset] of [['Move up', -1], ['Move down', 1]]) {
-      const control = button(label, () => {
-        [list[i], list[i + offset]] = [list[i + offset], block];
-        this.#select(block);
-        this.#changed();
-      });
-      control.disabled = !list[i + offset];
+
+    const addAction = (label, enabled, command) => {
+      const control = button(label, () => this.#apply(command));
+      control.disabled = !enabled;
       actions.append(control);
-    }
-    const duplicate = button('Duplicate', () => {
-      const copy = structuredClone(block);
-      list.splice(i + 1, 0, copy);
-      try { validateDocument(this.#doc); }
-      catch (error) { list.splice(i + 1, 1); this.#feedback(error.message); return; }
-      this.#select(copy);
-      this.#changed();
-    });
-    duplicate.disabled = list.length >= (slot.max ?? Infinity);
-    actions.append(duplicate);
-    const remove = button('Remove', () => {
-      list.splice(i, 1);
-      this.#select(list[i] ?? list[i - 1] ?? parent);
-      this.#changed();
-    });
-    remove.disabled = list.length <= (slot.min ?? 0);
-    actions.append(remove);
-    panel.append(actions);
+    };
+
+    addAction('Move up', index > 0, () => this.#model.move(siblings, block, -1));
+    addAction('Move down', index < siblings.length - 1, () => this.#model.move(siblings, block, 1));
+    addAction('Duplicate', siblings.length < (slot.max ?? Infinity), () => this.#model.duplicate(siblings, block));
+    addAction('Remove', siblings.length > (slot.min ?? 0), () => this.#model.remove(location, block));
+    return actions;
   }
 }
+
 customElements.define('truncus-editor', TruncusEditor);

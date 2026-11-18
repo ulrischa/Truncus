@@ -90,3 +90,18 @@ All registered field values are strings. Validation checks known block types, fi
 ## Extend and test
 
 Follow [Writing a block](docs/writing-a-block.md) for a complete custom block, a constrained repeater and an inspector extension. Open [the browser tests](http://localhost:8000/tests/) with the same local server to run the dependency-free regression suite.
+
+## How the code fits together
+
+| When working on… | Start here |
+| --- | --- |
+| Block defaults, type registration or validation of imported JSON | [Document schema and validator](src/model.js) |
+| Editing a field, inserting a child or choosing what stays selected after removal | [EditorDocument](src/editor-document.js) |
+| Keyboard focus, the outline, block settings or change notifications | [TruncusEditor](src/editor.js) |
+| Controls shared by custom block inspectors | [TruncusBlock](src/component.js) |
+| Converting a document into a DOM fragment or HTML | [Renderer](src/renderer.js) |
+| Built-in blocks | [Text and links](src/blocks/text.js), [repeaters and lists](src/blocks/lists.js), [accordions and teasers](src/blocks/sections.js) |
+
+For example, typing in a link field calls `TruncusBlock.setAttributeValue()`. The inspector emits `truncus-edit`. The editor asks its `EditorDocument` to validate the edit. An accepted value refreshes the outline and preview, then triggers `truncus-change` for the host to save. The inspector stays mounted so the caret stays in place. A rejected value leaves the saved document intact and displays feedback.
+
+To trace publishing, start at `renderDocument()`. It validates the tree, renders the children in each slot, then passes those nodes to the parent's static `render()` method. The preview and HTML export use this same path.

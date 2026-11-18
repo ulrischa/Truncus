@@ -1,21 +1,45 @@
-// Each named slot owns an ordered collection of child blocks.
+/**
+ * @typedef {object} Block
+ * @property {string} type Stable registry key stored in JSON.
+ * @property {Record<string, string>} attributes Values described by the block's fields.
+ * @property {Record<string, Block[]>} slots Ordered children grouped by relationship.
+ *
+ * @typedef {object} TruncusDocument
+ * @property {1} version Format version for persistence.
+ * @property {Block[]} blocks Top-level blocks in reading order.
+ */
+
 const types = new Map();
 const namePattern = /^[a-z][a-z0-9-]*$/;
-const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
-export const blockTypes = () => [...types.keys()];
+const maxBlocks = 5000;
+const maxDepth = 64;
 
-export function definition(type) {
-  const entry = types.get(type);
-  if (!entry) throw new Error('Unknown block type: ' + type);
-  return entry;
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** Return registered type keys in insertion order, as shown in block pickers. */
+export function blockTypes() {
+  return [...types.keys()];
+}
+
+/** Resolve the class that defines a type's schema, inspector and HTML renderer. */
+export function definition(type) {
+  const component = types.get(type);
+  if (!component) throw new Error('Unknown block type: ' + type);
+  return component;
+}
+
+/** Register a stable storage key and its associated browser custom element. */
 export function register(type, component) {
-  if (!namePattern.test(type) || types.has(type)) throw new Error('Invalid or duplicate block: ' + type);
+  if (!namePattern.test(type) || types.has(type)) {
+    throw new Error('Invalid or duplicate block: ' + type);
+  }
   customElements.define('truncus-block-' + type, component);
   types.set(type, component);
 }
 
+/** Check the resolved scheme while preserving relative URLs in published HTML. */
 export function safeUrl(value) {
   if (!value.trim()) return '';
   try {
@@ -26,47 +50,87 @@ export function safeUrl(value) {
   }
 }
 
+/** Create an independent block tree from registered defaults. @returns {Block} */
 export function createBlock(type) {
-  const {fields, slots} = definition(type);
-  const attributes = Object.fromEntries(Object.entries(fields).map(([key, field]) => [key, field.initial ?? '']));
-  const children = Object.fromEntries(Object.entries(slots).map(([key, slot]) =>
-    [key, (slot.initial ?? []).map(createBlock)]));
-  return {type, attributes, slots: children};
+  const schema = definition(type);
+  const attributes = Object.fromEntries(
+    Object.entries(schema.fields).map(([key, field]) => [key, field.initial ?? ''])
+  );
+  const slots = Object.fromEntries(
+    Object.entries(schema.slots).map(([key, slot]) => [key, (slot.initial ?? []).map(createBlock)])
+  );
+  return {type, attributes, slots};
 }
 
+/** An omitted accept list admits every registered type, including extensions. */
 export function allowedTypes(slot) {
   return slot.accept ?? blockTypes();
 }
 
-export function validateDocument(doc) {
-  if (!isRecord(doc) || doc.version !== 1 || !Array.isArray(doc.blocks)) throw new Error('Expected a version 1 Truncus document.');
-  let count = 0;
-  const seen = new Set();
-  function visit(node, depth) {
-    if (++count > 5000 || depth > 64) throw new Error('Document exceeds the block or nesting limit.');
-    if (!isRecord(node) || !isRecord(node.attributes) || !isRecord(node.slots)) throw new Error('Malformed block.');
-    if (seen.has(node)) throw new Error('Each block must have exactly one owner.');
-    seen.add(node);
-    const {fields, slots} = definition(node.type);
-    for (const [values, schema] of [[node.attributes, fields], [node.slots, slots]]) {
-      if (Object.keys(values).length !== Object.keys(schema).length ||
-          Object.keys(values).some(key => !Object.hasOwn(schema, key))) throw new Error('Unexpected or missing fields in ' + node.type);
+function validateKeys(type, values, schema) {
+  const keys = Object.keys(values);
+  if (keys.length !== Object.keys(schema).length || keys.some(key => !Object.hasOwn(schema, key))) {
+    throw new Error('Unexpected or missing fields in ' + type);
+  }
+}
+
+function validateAttributes(block, fields) {
+  validateKeys(block.type, block.attributes, fields);
+  for (const [key, field] of Object.entries(fields)) {
+    const value = block.attributes[key];
+    const invalid = () => new Error('Invalid ' + field.label + ' in ' + block.type);
+    if (typeof value !== 'string') throw invalid();
+    if (field.options && !field.options.includes(value)) throw invalid();
+    if (field.kind === 'url' && value && !safeUrl(value)) throw invalid();
+  }
+}
+
+/** A fresh traversal owns its visited set so separate validation calls are independent. */
+class DocumentValidator {
+  #visited = new Set();
+
+  visit(block, depth) {
+    if (depth > maxDepth || this.#visited.size >= maxBlocks) {
+      throw new Error('Document exceeds the block or nesting limit.');
     }
-    for (const [key, field] of Object.entries(fields)) {
-      const value = node.attributes[key];
-      if (typeof value !== 'string' || (field.options && !field.options.includes(value)) ||
-          (field.kind === 'url' && value && !safeUrl(value))) throw new Error('Invalid ' + field.label + ' in ' + node.type);
+    if (!isRecord(block) || !isRecord(block.attributes) || !isRecord(block.slots)) {
+      throw new Error('Malformed block.');
     }
-    for (const [key, slot] of Object.entries(slots)) {
-      const items = node.slots[key];
-      if (!Array.isArray(items) || items.length < (slot.min ?? 0) || items.length > (slot.max ?? Infinity))
-        throw new Error('Invalid number of blocks in ' + node.type + '.' + key);
-      for (const child of items) {
-        if (!allowedTypes(slot).includes(child?.type)) throw new Error('Invalid child in ' + node.type + '.' + key);
-        visit(child, depth + 1);
-      }
+    // JSON imports cannot contain cycles, but hosts may also supply live objects.
+    if (this.#visited.has(block)) throw new Error('Each block must have exactly one owner.');
+    this.#visited.add(block);
+
+    const schema = definition(block.type);
+    validateAttributes(block, schema.fields);
+    validateKeys(block.type, block.slots, schema.slots);
+    for (const [key, slot] of Object.entries(schema.slots)) {
+      this.#visitSlot(block.slots[key], slot, block.type + '.' + key, depth);
     }
   }
-  doc.blocks.forEach(node => visit(node, 1));
+
+  #visitSlot(children, slot, path, parentDepth) {
+    if (!Array.isArray(children) || children.length < (slot.min ?? 0) || children.length > (slot.max ?? Infinity)) {
+      throw new Error('Invalid number of blocks in ' + path);
+    }
+    const permitted = allowedTypes(slot);
+    for (const child of children) {
+      if (!permitted.includes(child?.type)) throw new Error('Invalid child in ' + path);
+      this.visit(child, parentDepth + 1);
+    }
+  }
+}
+
+/**
+ * Validate structure, schema and ownership without modifying the input.
+ * @param {TruncusDocument} doc
+ * @returns {TruncusDocument} The original document on success.
+ * @throws {Error} When a block or slot violates the version 1 format.
+ */
+export function validateDocument(doc) {
+  if (!isRecord(doc) || doc.version !== 1 || !Array.isArray(doc.blocks)) {
+    throw new Error('Expected a version 1 Truncus document.');
+  }
+  const validator = new DocumentValidator();
+  for (const block of doc.blocks) validator.visit(block, 1);
   return doc;
 }

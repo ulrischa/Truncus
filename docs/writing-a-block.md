@@ -74,7 +74,7 @@ class NoticeList extends definition('repeater') {
 register('notice-list', NoticeList);
 ```
 
-Each entry remains a whole notice with its own fields and nested children. For the composition used by the built-in link list, see [the block definitions](../src/blocks.js).
+Each entry remains a whole notice with its own fields and nested children. For the composition used by the built-in link list, see [the repeater and link list classes](../src/blocks/lists.js).
 
 ## 5. Customize the inspector when needed
 

@@ -88,4 +88,23 @@ test('Repeated fields support add, edit, duplicate, reorder, remove and reopen',
   assert(serializeHTML(editor.value) === '<ul><li><p>First</p></li></ul>');
   editor.remove();
 });
+test('A rejected field edit preserves the draft, focus target and change count', () => {
+  const editor = document.createElement('truncus-editor');
+  document.body.append(editor);
+  editor.value = doc(createBlock('link'));
+  let changes = 0;
+  editor.addEventListener('truncus-change', () => changes++);
+  const inspector = editor.shadowRoot.querySelector('truncus-block-link');
+  const destination = inspector.shadowRoot.querySelectorAll('input')[1];
+  destination.value = 'javascript:invalid';
+  destination.dispatchEvent(new Event('input'));
+  assert(editor.value.blocks[0].attributes.href === '#');
+  assert(changes === 0);
+  destination.value = '/guide';
+  destination.dispatchEvent(new Event('input'));
+  assert(editor.value.blocks[0].attributes.href === '/guide');
+  assert(inspector === editor.shadowRoot.querySelector('truncus-block-link'));
+  assert(changes === 1);
+  editor.remove();
+});
 document.documentElement.dataset.result = failures ? 'failed' : 'passed';
