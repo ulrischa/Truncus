@@ -23,3 +23,10 @@ button[aria-pressed=true]{background:#dbeadd;font-weight:650}
 #feedback{color:#8b381e}
 @media(max-width:850px){.workspace{grid-template-columns:1fr 1fr}.page{grid-column:1/-1;grid-row:2}}
 @media(max-width:520px){.workspace{display:flex;flex-direction:column}.workspace>section{width:100%}.inspector{order:1}.page{order:2}}
+#history,.canvas-group{margin-block:.75rem}
+#history,#issues>div{display:flex;gap:.5rem;flex-wrap:wrap}
+#preview .edit-text{display:inline;text-align:inherit;font:inherit;color:inherit;background:transparent;border:0;padding:0;white-space:pre-wrap}
+#preview .edit-text:hover{outline:1px dashed #769e76}
+#preview .canvas-input{width:100%;display:block;font:inherit;color:inherit;resize:vertical}
+#preview .canvas-group>button{margin:.25rem .35rem .25rem 0}
+@media(max-width:850px){.workspace{display:flex;flex-direction:column}.workspace>section{width:100%}.page{order:0}.inspector{order:1}.outline{order:2}}

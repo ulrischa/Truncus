@@ -18,13 +18,12 @@ Open [the local demo](http://127.0.0.1:8000/). To stop the server, press **Ctrl+
 
 ### Editing and publishing a page
 
-1. Select a block in **Document outline**. Edit its fields in **Block settings** and watch **Live preview**.
-2. To add a top-level block, choose its type below the outline and select **Add**. To insert a nested block, use the picker inside its parent's settings.
-3. Try adding a **Link list**. Select **Edit Repeated links**, then **Add** to insert another link. Select **Move up**, **Move down**, **Duplicate**, or **Remove** on a link to manage the list. The controls respect the slot's minimum and maximum size.
-4. **Save JSON** downloads the editable source. **Open JSON** validates and restores it. **Export HTML** downloads a standalone page with native headings, paragraphs, links, lists, articles, and disclosures. The exported page works without editor JavaScript.
-
-5. To publish a standalone page, rename the downloaded HTML file (for example, `river-report.html`) and upload it to your website through your usual publishing process. The public page works independently of the editor. Keep the matching JSON file in your editorial files.
-6. To update the published page, reopen its JSON file with **Open JSON**, edit the blocks, save the revised JSON, then export the HTML again and replace the published HTML file at the same URL.
+1. Choose **Topic page** and **New page**. Click the heading in the document canvas and start writing. Add paragraphs to **Introduction** or **Main text**. The saved document remembers which slot owns each paragraph.
+2. Press **Enter** inside a main-text paragraph to split it. Select text to apply a link, bold or emphasis. Paste headings, paragraphs or lists from a website or Word. Use **Undo** to reverse the whole paste.
+3. Add a link list to **Further information**. Select **Add link** right below the list, type the label and choose **Destination** to set the URL. The outline and inspector remain available for moving or converting blocks.
+4. **Save JSON** downloads the editable source. **Open JSON** restores it. **Check publication** lists outstanding issues. Select a message to jump to its field. A rule may also offer an explicit correction.
+5. **Export HTML** downloads a standalone page. Rename it, for example to `river-report.html`, and upload it through your usual publishing process. Keep the matching JSON in your editorial files.
+6. To update the page, open the JSON, edit it, save a new JSON copy and replace the exported HTML at the same URL.
 
 The demo stores one draft per browser origin in local storage. Opening another document replaces that draft. Save a JSON copy if you want to keep both. The embeddable editor leaves storage to its host.
 
@@ -34,16 +33,18 @@ Choose **Guide** in the new-page selector and select **New page**. Truncus creat
 
 Choose **Feature article** for a different structure: one opening teaser, a body of headings, paragraphs or accordions, and up to two reference lists. Adding a block places it in the appropriate region.
 
-Define your own ordered root regions, field restrictions and reusable validation rules through the public API. Rules may inspect the whole document or a block in its parent slot. Publication-only checks let authors save an incomplete draft. [Designing a page type](docs/page-types.md) walks through a complete example, rule contexts, compatibility and the core-only entry point.
+Define named root slots (including repeated use of the same type in several slots), ordered root regions, field restrictions and reusable validation rules through the public API. Rules may inspect the whole document or a block in its parent slot. Publication-only checks let authors save an incomplete draft. [Designing a page type](docs/page-types.md) walks through a complete example, rule contexts, compatibility and the core-only entry point.
 
 ## Built-in blocks
 
 | Type | Fields or child slots | Output |
 | --- | --- | --- |
 | `heading` | Text and level 1–6 | `h1` through `h6` |
-| `paragraph` | Plain text | `p` |
+| `paragraph` | Text and optional formatting ranges | `p` |
 | `link` | Link text and destination | `a` |
 | `repeater` | Ordered `items` of any registered type | `ul` with one `li` per item |
+| `ordered-list` | Ordered items | `ol` with one `li` per item |
+| `list-content` | Multiple blocks in one list item | Child content in reading order |
 | `link-repeater` | Repeater restricted to `link` items | Same list renderer as `repeater` |
 | `link-list` | Exactly one `link-repeater` in `links` | Its repeater's list |
 | `accordion-item` | Summary and a `body` slot | `details` and `summary` |
@@ -100,11 +101,11 @@ The editable format is a versioned JSON tree. Array order is reading order. Ever
 
 Keep JSON as the source for later editing. HTML contains the published semantics. Multiple block compositions can produce identical HTML, so the editor reopens JSON. Published HTML inherits the destination site's styles. Editor controls are isolated in shadow roots.
 
-All registered field values are strings. Validation checks known block types, field keys, enum choices, URL schemes, slot membership and cardinality. It limits documents to 5,000 blocks and 64 levels. Each child belongs to a single parent or to the document root. Invalid imports leave the current document intact. Register custom types before loading documents that use them.
+All registered field values are strings. Validation checks known block types, field keys, enum choices, URL schemes, slot membership and cardinality. It limits documents to 5,000 blocks and 64 levels. Each child belongs to a single parent or to the document root. Invalid imports leave the current document intact. Unregistered blocks are retained as opaque draft data. Publishing requires their modules.
 
 ## Extend and test
 
-Follow [Writing a block](docs/writing-a-block.md) for a complete custom block, a constrained repeater and an inspector extension. Open [the browser tests](http://127.0.0.1:8000/tests/) with the same local server to run the dependency-free regression suite.
+See [Authoring and extension contracts](docs/authoring.md) for inline fields, block migrations, undo, diagnostics and isolated catalogs. Follow [Writing a block](docs/writing-a-block.md) for a complete custom block, a constrained repeater and an inspector extension. Open [the browser tests](http://127.0.0.1:8000/tests/) with the same local server to run the dependency-free regression suite.
 
 ## How the code fits together
 

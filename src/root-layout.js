@@ -1,4 +1,4 @@
-import {definition} from './registry.js';
+
 
 /**
  * Ordered regions partition the root sequence by type without adding wrappers to
@@ -9,7 +9,7 @@ export class RootLayout {
   #owners = new Map();
   #fallback;
 
-  constructor(regions) {
+  constructor(regions, catalog) {
     if (!Array.isArray(regions)) throw new Error('Expected an ordered array of root regions.');
     const names = new Set();
     for (const {name, accept, min = 0, max = Infinity, initial = []} of regions) {
@@ -31,7 +31,7 @@ export class RootLayout {
       } else {
         if (!Array.isArray(accept)) throw new Error('Expected a list of accepted types for ' + name);
         for (const type of accept) {
-          definition(type);
+          catalog.definition(type);
           if (this.#owners.has(type)) throw new Error('Root type belongs to multiple regions: ' + type);
           this.#owners.set(type, region);
         }
@@ -40,10 +40,19 @@ export class RootLayout {
     // Resolve catch-all defaults only after every explicit owner is known.
     for (const region of this.#regions) {
       for (const type of region.initial) {
-        definition(type);
+        catalog.definition(type);
         if (this.regionFor(type) !== region) throw new Error('Invalid initial type in region ' + region.name);
       }
     }
+  }
+
+  /** Convert legacy regions to named slots without changing their type partition. */
+  get slots() {
+    return Object.fromEntries(this.#regions.map(region => {
+      const explicit = [...this.#owners].filter(([, owner]) => owner === region).map(([type]) => type);
+      return [region.name, {...region, label: region.name, accept: region === this.#fallback ? undefined : explicit,
+        exclude: region === this.#fallback ? [...this.#owners.keys()] : []}];
+    }));
   }
 
   regionFor(type) {

@@ -5,7 +5,7 @@ import {safeUrl} from '../model.js';
 export class Heading extends TruncusBlock {
   static label = 'Heading';
   static fields = {
-    text: {label: 'Heading', initial: 'Heading'},
+    text: {inline: true, rich: true, label: 'Heading', initial: 'Heading'},
     level: {label: 'Level', options: ['1', '2', '3', '4', '5', '6'], initial: '2'}
   };
 
@@ -17,7 +17,7 @@ export class Heading extends TruncusBlock {
 export class Paragraph extends TruncusBlock {
   static label = 'Paragraph';
   static fields = {
-    text: {label: 'Text', initial: 'Paragraph text', kind: 'multiline'}
+    text: {inline: true, rich: true, label: 'Text', initial: 'Paragraph text', kind: 'multiline'}
   };
 
   static render({text}, slots, element) {
@@ -29,7 +29,7 @@ export class Paragraph extends TruncusBlock {
 export class Link extends TruncusBlock {
   static label = 'Link';
   static fields = {
-    text: {label: 'Link text', initial: 'Read more'},
+    text: {inline: true, label: 'Link text', initial: 'Read more'},
     href: {label: 'Destination', kind: 'url', initial: '#'}
   };
 

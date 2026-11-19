@@ -40,7 +40,7 @@ for (const key of pageTypes()) {
 }
 document.querySelector('#new').onclick = () => {
   if (!window.confirm('Replace the current draft? Use Save JSON first to keep a copy.')) return;
-  editor.value = createDocument(typePicker.value);
+  editor.value = createDocument(typePicker.value, {namedSlots: true});
   persist();
 };
 
@@ -67,6 +67,7 @@ document.querySelector('#save').onclick = () =>
   download('truncus.json', 'application/json', JSON.stringify(editor.value, null, 2));
 document.querySelector('#export').onclick = () => {
   try {
+    if (editor.checkPublication().length) return;
     download('truncus.html', 'text/html', '<!doctype html>\n<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Truncus document</title><main>' + serializeHTML(editor.value) + '</main></html>');
   } catch (error) {
     status.textContent = 'Could not export page. ' + error.message;

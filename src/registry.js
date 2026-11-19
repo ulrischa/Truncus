@@ -1,23 +1,44 @@
-const types = new Map();
-const namePattern = /^[a-z][a-z0-9-]*$/;
+let serial = 0;
 
-/** Return registered type keys in insertion order, as shown in block pickers. */
-export function blockTypes() {
-  return [...types.keys()];
-}
+/** A catalog owns storage keys. Browser tag names stay unique across independent catalogs. */
+export class Catalog {
+  #blocks;
+  #tags;
+  #prefix;
+  pages;
 
-/** Resolve the class that defines a type's schema, inspector and HTML renderer. */
-export function definition(type) {
-  const component = types.get(type);
-  if (!component) throw new Error('Unknown block type: ' + type);
-  return component;
-}
-
-/** Register a stable storage key and its associated browser custom element. */
-export function register(type, component) {
-  if (!namePattern.test(type) || types.has(type)) {
-    throw new Error('Invalid or duplicate block: ' + type);
+  constructor(base) {
+    this.#blocks = new Map(base?.#blocks);
+    this.#tags = new Map(base?.#tags);
+    this.pages = new Map(base?.pages);
+    this.#prefix = serial++ === 0 ? 'truncus-block-' : 'truncus-local-' + serial + '-';
   }
-  customElements.define('truncus-block-' + type, component);
-  types.set(type, component);
+
+  has(type) { return this.#blocks.has(type); }
+  types() { return [...this.#blocks.keys()]; }
+  tag(type) { return this.#tags.get(type); }
+
+  definition(type) {
+    if (!this.has(type)) throw new Error('Unknown block type: ' + type);
+    return this.#blocks.get(type);
+  }
+
+  register(type, component) {
+    if (typeof type !== 'string' || !/^[a-z][a-z0-9-]*$/.test(type) || this.has(type)) {
+      throw new Error('Invalid or duplicate block: ' + type);
+    }
+    if (!Number.isSafeInteger(component.version ?? 1) || (component.version ?? 1) < 1) {
+      throw new Error('Block version must be a positive integer: ' + type);
+    }
+    const tag = this.#prefix + type;
+    // An autonomous custom element constructor can only be registered once.
+    customElements.define(tag, this === defaultCatalog ? component : class extends component {});
+    this.#tags.set(type, tag);
+    this.#blocks.set(type, component);
+  }
 }
+
+export const defaultCatalog = new Catalog();
+export const definition = type => defaultCatalog.definition(type);
+export const blockTypes = () => defaultCatalog.types();
+export const register = (type, component) => defaultCatalog.register(type, component);

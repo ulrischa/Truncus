@@ -43,9 +43,15 @@ export class TruncusBlock extends HTMLElement {
       const label = element('label', field.label);
       const choices = this.fieldChoices?.[key] ?? field.options;
       const input = createFieldControl(field, choices);
+      input.dataset.field = key;
       input.value = block.attributes[key];
-      input.addEventListener('input', () => this.setAttributeValue(key, input.value));
+      input.addEventListener('input', event => {
+        if (!event.isComposing) this.setAttributeValue(key, input.value);
+      });
+      input.addEventListener('compositionend', () => this.setAttributeValue(key, input.value));
       label.append(input);
+      const hint = this.pageType?.fieldHints?.[block.type]?.[key];
+      if (hint) label.append(element('small', hint));
       container.append(label);
     }
   }

@@ -1,119 +1,162 @@
 import {pageType} from './page-types.js';
 import {createPageBlock, validateDocument} from './model.js';
+import {defaultCatalog} from './registry.js';
+import {prepareDocument} from './migrations.js';
+import {rootGroups} from './document-tree.js';
+import {editedMarks, sliceMarks} from './marks.js';
 
-/**
- * Owns one editor's working tree and selection. Blocks retain object identity
- * during edits, so moving a block also preserves its selected descendants.
- * Instances are internal; hosts exchange plain versioned JSON via editor.value.
- */
+/** Commands retain only the affected fields or sibling range and their inverse. */
 export class EditorDocument {
   #document = {version: 1, blocks: []};
   #selection = null;
+  #past = [];
+  #future = [];
+  constructor(catalog = defaultCatalog) { this.catalog = catalog; }
+  get document() { return this.#document; }
+  get page() { return pageType(this.#document.pageType ?? 'free', this.catalog); }
+  get groups() { return rootGroups(this.#document, this.page); }
+  get selection() { return this.#selection; }
+  get canUndo() { return Boolean(this.#past.length); }
+  get canRedo() { return Boolean(this.#future.length); }
+  select(block) { this.#selection = block; }
+  snapshot() { return structuredClone(this.#document); }
+  create(type) { return createPageBlock(type, this.page, this.catalog); }
 
-  /** Internal read access for the outline and renderer. Use snapshot() for callers. */
-  get document() {
-    return this.#document;
-  }
-
-  get page() {
-    return pageType(this.#document.pageType ?? 'free');
+  load(source) {
+    const candidate = prepareDocument(source, {catalog: this.catalog});
+    this.#document = candidate;
+    this.#selection = this.groups.flatMap(group => group.items)[0] ?? null;
+    this.#past = [];
+    this.#future = [];
   }
 
   canAdd(siblings, type) {
-    return siblings !== this.#document.blocks || this.page.layout.canAdd(siblings, type);
+    return siblings !== this.document.blocks || this.page.layout.canAdd(siblings, type);
   }
-
   canRemove({siblings, slot}, block) {
-    if (siblings.length <= (slot.min ?? 0)) return false;
-    return siblings !== this.#document.blocks || this.page.layout.canRemove(siblings, block.type);
+    return siblings.length > (slot.min ?? 0) &&
+      (siblings !== this.document.blocks || this.page.layout.canRemove(siblings, block.type));
   }
-
   canMove(siblings, index, offset) {
-    const neighbor = siblings[index + offset];
-    if (!neighbor || !siblings[index]) return false;
-    const layout = this.page.layout;
-    return siblings !== this.#document.blocks || layout.regionFor(siblings[index].type) === layout.regionFor(neighbor.type);
+    const other = siblings[index + offset];
+    if (!other || !siblings[index]) return false;
+    return siblings !== this.document.blocks ||
+      this.page.layout.regionFor(siblings[index].type) === this.page.layout.regionFor(other.type);
   }
 
-  get selection() {
-    return this.#selection;
+  #commit(name, forward, backward, selected, group) {
+    const previous = this.selection;
+    forward();
+    try { validateDocument(this.document, {catalog: this.catalog}); }
+    catch (error) { backward(); throw error; }
+    this.select(selected);
+    const last = this.#past.at(-1);
+    if (group && last?.group === group && !this.#future.length) last.forward = forward;
+    else this.#past.push({name, forward, backward, previous, selected, group});
+    if (this.#past.length > 100) this.#past.shift();
+    this.#future = [];
   }
 
-  select(block) {
-    this.#selection = block;
+  undo() {
+    const entry = this.#past.pop();
+    if (!entry) return;
+    entry.backward();
+    this.select(entry.previous);
+    this.#future.push(entry);
+  }
+  redo() {
+    const entry = this.#future.pop();
+    if (!entry) return;
+    entry.forward();
+    this.select(entry.selected);
+    this.#past.push(entry);
   }
 
-  snapshot() {
-    return structuredClone(this.#document);
-  }
-
-  /** Validate a detached candidate first so a failed import preserves the draft. */
-  load(document) {
-    const candidate = structuredClone(document);
-    validateDocument(candidate);
-    this.#document = candidate;
-    this.select(candidate.blocks[0] ?? null);
-  }
-
-  /** Validate the proposed value before notifying views or persistence listeners. */
-  edit(key, value) {
-    const attributes = this.#selection?.attributes;
-    if (!attributes || !Object.hasOwn(attributes, key)) return false;
-
-    const previous = attributes[key];
-    attributes[key] = value;
-    try {
-      validateDocument(this.#document);
-    } catch (error) {
-      attributes[key] = previous;
-      throw error;
-    }
+  edit(key, value, block = this.selection, formatting, group) {
+    if (!block || !Object.hasOwn(block.attributes, key)) return false;
+    const before = block.attributes[key];
+    const oldMarks = block.marks;
+    if (before === value && formatting === undefined) return false;
+    const ranges = formatting ?? (oldMarks?.[key] && editedMarks(oldMarks[key], before, value));
+    const nextMarks = ranges ? {...oldMarks, [key]: ranges} : oldMarks;
+    const write = (text, marks) => {
+      block.attributes[key] = text;
+      if (marks) block.marks = marks;
+      else delete block.marks;
+    };
+    this.#commit('setField', () => write(value, nextMarks), () => write(before, oldMarks), block, group);
     return true;
   }
 
+  replace(name, siblings, start, count, blocks, selected = blocks[0] ?? null) {
+    const removed = siblings.slice(start, start + count);
+    this.#commit(name, () => siblings.splice(start, count, ...blocks),
+      () => siblings.splice(start, blocks.length, ...removed), selected);
+  }
   add(siblings, type) {
-    const index = siblings === this.#document.blocks
-      ? this.page.layout.insertionIndex(siblings, type)
-      : siblings.length;
-    this.#insert(siblings, index, createPageBlock(type, this.page));
+    const index = siblings === this.document.blocks ? this.page.layout.insertionIndex(siblings, type) : siblings.length;
+    this.replace('insertBlock', siblings, index, 0, [this.create(type)]);
   }
-
   duplicate(siblings, block) {
-    this.#insert(siblings, siblings.indexOf(block) + 1, structuredClone(block));
+    this.replace('duplicateBlock', siblings, siblings.indexOf(block) + 1, 0, [structuredClone(block)]);
   }
-
-  // A rule can depend on any part of the document. Check the final candidate
-  // after every structural operation, restoring the same block objects on failure.
-  #changeList(siblings, change) {
-    const previous = siblings.slice();
-    try {
-      change();
-      validateDocument(this.#document);
-    } catch (error) {
-      siblings.splice(0, siblings.length, ...previous);
-      throw error;
-    }
-  }
-
-  #insert(siblings, index, block) {
-    this.#changeList(siblings, () => siblings.splice(index, 0, block));
-    this.select(block);
-  }
-
   move(siblings, block, offset) {
     const index = siblings.indexOf(block);
     if (!this.canMove(siblings, index, offset)) throw new Error('Cannot move across this boundary.');
-    this.#changeList(siblings, () => {
-      siblings.splice(index, 1);
-      siblings.splice(index + offset, 0, block);
-    });
+    const start = Math.min(index, index + offset);
+    this.replace('moveBlock', siblings, start, 2, siblings.slice(start, start + 2).reverse(), block);
   }
-
   remove(location, block) {
     if (!this.canRemove(location, block)) throw new Error('This block is required.');
     const {siblings, parent} = location;
     const index = siblings.indexOf(block);
-    this.#changeList(siblings, () => siblings.splice(index, 1));
-    this.select(siblings[index] ?? siblings[index - 1] ?? parent);
+    this.replace('removeBlock', siblings, index, 1, [], siblings[index+1] ?? siblings[index-1] ?? parent);
+  }
+
+  moveToSlot(siblings, destination, block) {
+    const index = siblings.indexOf(block);
+    this.#commit('moveToSlot', () => {
+      siblings.splice(index, 1);
+      destination.push(block);
+    }, () => {
+      destination.pop();
+      siblings.splice(index, 0, block);
+    }, block);
+  }
+
+  transform(siblings, block, type) {
+    const next = this.create(type);
+    next.attributes.text = block.attributes.text;
+    if (block.marks) next.marks = structuredClone(block.marks);
+    this.replace('transformBlock', siblings, siblings.indexOf(block), 1, [next]);
+  }
+
+  groupLinks(siblings, block) {
+    let start = siblings.indexOf(block), end = start + 1;
+    while (siblings[start-1]?.type === 'link') start--;
+    while (siblings[end]?.type === 'link') end++;
+    const list = this.create('link-list');
+    list.slots.links[0].slots.items = siblings.slice(start, end);
+    this.replace('groupLinks', siblings, start, end-start, [list]);
+  }
+
+  /** Preserve both sides of the selection when inserting a paragraph break or rich paste. */
+  insertAtSelection(siblings, block, key, start, end, inserted, split = false) {
+    const text = block.attributes[key];
+    const marks = block.marks?.[key];
+    const part = (original, from, to) => {
+      const next = structuredClone(original);
+      next.attributes[key] = text.slice(from, to);
+      if (marks) next.marks = {...next.marks, [key]: sliceMarks(marks, from, to)};
+      return next;
+    };
+    const before = part(block, 0, start);
+    const after = part(split ? this.create('paragraph') : block, end, text.length);
+    const replacement = [];
+    if (split || start) replacement.push(before);
+    replacement.push(...inserted);
+    if (split || end < text.length) replacement.push(after);
+    this.replace(split ? 'splitParagraph' : 'pasteBlocks', siblings, siblings.indexOf(block), 1,
+      replacement, split ? after : inserted.at(-1));
   }
 }

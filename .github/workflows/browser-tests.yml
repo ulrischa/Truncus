@@ -1,0 +1,22 @@
+name: Browser tests
+on: [push, pull_request]
+permissions:
+  contents: read
+
+jobs:
+  chrome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the authoring suite in Chrome
+        shell: bash
+        run: |
+          npx --yes http-server@14.1.1 . -a 127.0.0.1 -p 8080 > "$RUNNER_TEMP/truncus-http.log" 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          curl --retry 30 --retry-connrefused --retry-delay 1 --fail --silent http://127.0.0.1:8080/tests/ > /dev/null
+          google-chrome --headless --disable-gpu --no-sandbox --virtual-time-budget=8000 \
+            --dump-dom http://127.0.0.1:8080/tests/ > "$RUNNER_TEMP/truncus-tests.html"
+          cat "$RUNNER_TEMP/truncus-tests.html"
+          grep -q 'data-result="passed"' "$RUNNER_TEMP/truncus-tests.html"

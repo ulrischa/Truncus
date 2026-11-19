@@ -4,7 +4,7 @@ import {TruncusBlock} from '../component.js';
 export class AccordionItem extends TruncusBlock {
   static label = 'Accordion item';
   static fields = {
-    summary: {label: 'Summary', initial: 'Question'}
+    summary: {inline: 'summary', label: 'Summary', initial: 'Question'}
   };
   static slots = {
     body: {label: 'Content', initial: ['paragraph']}
@@ -20,7 +20,7 @@ export class AccordionItem extends TruncusBlock {
 export class Accordion extends TruncusBlock {
   static label = 'Accordion';
   static slots = {
-    items: {label: 'Panels', accept: ['accordion-item'], initial: ['accordion-item']}
+    items: {action: 'Add section', label: 'Panels', accept: ['accordion-item'], initial: ['accordion-item']}
   };
 
   static render(attributes, {items}, element) {

@@ -2,7 +2,22 @@
 
 A page type defines the contract of one editable document. Blocks own their own attributes, child slots and HTML. A page combines those blocks and adds editorial rules. The document stores the page's registry key and an ordered block tree. Executable rules stay in application code.
 
-## Start with the structure
+## Use named slots for new page designs
+
+```js
+registerPageType('briefing', {
+  label: 'Briefing',
+  slots: {
+    intro: {label: 'Introduction', accept: ['paragraph'], initial: ['paragraph']},
+    body: {label: 'Main text', accept: ['paragraph', 'heading', 'accordion']},
+    related: {label: 'Related material', accept: ['link-list'], max: 1}
+  }
+});
+```
+
+`createDocument('briefing')` produces version 3. The root contains the page type, empty attributes and the three named slot arrays. The same paragraph type can occur in both introduction and body. Slot declaration order defines reading order. Named slots and legacy regions are alternative declarations. See [Authoring and extension contracts](authoring.md) for migration and examples of field-level diagnostics.
+
+## Define ordered regions for flat documents
 
 Suppose a feature article opens with one teaser, contains paragraphs and headings, and ends with up to two lists of references. Register the blocks first, then register the page.
 
@@ -35,7 +50,7 @@ New articles begin with a teaser and a paragraph. Add a list, then add another p
 | `fieldOptions` | Narrows a registered enum field throughout the whole tree. If the block default is excluded, new instances use the first permitted choice. |
 | `rules` | Reusable synchronous checks for document-wide and contextual requirements. |
 
-A type can belong to one root region per page. This lets the editor infer its position from existing version 2 JSON without storing region IDs. For a layout that places the same underlying block at multiple positions, use distinct composite block types with named slots when the positions have different editorial meanings. Root regions add no HTML wrappers. The block's own slot schema continues to govern children.
+A type can belong to one root region per page. This lets the editor infer its position from existing version 2 JSON without storing region IDs. Use version 3 named root slots when a type belongs in several positions. Root regions add no HTML wrappers. The block's own slot schema continues to govern children.
 
 ## Add a rule without modifying the editor
 
@@ -61,9 +76,9 @@ registerPageType('newsroom-page', {
 });
 ```
 
-Use `scope: 'document'` (the default) for relationships involving multiple branches or counts across the page. A block rule runs once per node and receives `document`, `block`, `parent`, `slot`, `index`, `path` and the current `phase`. For root blocks, parent and slot are null. Document rules receive `document`, `path` and `phase`.
+Use `scope: 'document'` (the default) for relationships involving multiple branches or counts across the page. A block rule runs once per node and receives `document`, `block`, `parent`, `slot`, `index`, `path` and the current `phase`. Top-level version 1 and 2 blocks have null parent and slot. Version 3 top-level blocks receive the page root and owning slot name. Document rules receive `document`, `path` and `phase`.
 
-Return `undefined` to accept or a nonempty English message to reject. Rule IDs must be unique within a page type. Inputs are read-only snapshots. Checks should be deterministic, synchronous and free of side effects. For a whole-tree scan, use one document rule instead of scanning the whole document from each block.
+Return `undefined` to accept. To reject, return a message, a diagnostic object or an array of diagnostics. Rule IDs must be unique within a page type. Inputs are read-only snapshots. Checks should be deterministic, synchronous and free of side effects. For a whole-tree scan, use one document rule instead of scanning the whole document from each block.
 
 ## Choose when the rule applies
 
@@ -79,6 +94,6 @@ Custom rule rejections throw `PageRuleError` with `ruleId` and `path`. Core sche
 ## Pick your framework entry point
 
 - `src/truncus.js` loads standard blocks and the Free, Guide and Feature article page types.
-- `src/core.js` loads the editor and public API with an empty block catalog and the unrestricted Free page type. Register your own block classes and page types from this entry point. Registries are shared within the same module instance.
+- `src/core.js` loads the editor and public API with an empty block catalog and the unrestricted Free page type. Register your own block classes and page types from this entry point. The default catalog is shared. Assign `editor.catalog` to isolate registrations.
 
 Existing version 1 documents keep their unrestricted behavior. Version 2 documents retain their page type and JSON structure. Existing `requiredLast` definitions are translated into a catch-all content region and a required final region. Use either that shorthand or explicit regions. Register a new page key or migrate stored content when changing a published page contract incompatibly.

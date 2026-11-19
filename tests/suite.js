@@ -1,3 +1,4 @@
+import {authoringTests} from './authoring.js';
 import {TruncusBlock, createBlock, createDocument, registerPageType, register, renderDocument, serializeHTML, validateDocument} from '../src/truncus.js';
 
 const results = document.querySelector('#results');
@@ -246,4 +247,5 @@ test('Configuration errors and cyclic defaults fail explicitly', () => {
   register('recursive-test', Recursive);
   rejects(() => createBlock('recursive-test'));
 });
+authoringTests(test, assert, rejects);
 document.documentElement.dataset.result = failures ? 'failed' : 'passed';

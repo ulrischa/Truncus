@@ -4,3 +4,6 @@ export {renderDocument, serializeHTML} from './renderer.js';
 export {createDocument, createBlock, register, validateDocument, definition, blockTypes} from './model.js';
 export {registerPageType, pageType, pageTypes} from './page-types.js';
 export {PageRuleError} from './page-rules.js';
+export {createCatalog} from './page-types.js';
+export {defaultCatalog} from './registry.js';
+export {prepareDocument} from './migrations.js';
